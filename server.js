@@ -10,6 +10,10 @@ const SECRET_KEY = process.env.PAYMOB_SECRET_KEY?.trim();
 const PUBLIC_KEY = process.env.PAYMOB_PUBLIC_KEY?.trim();
 const HMAC_SECRET = process.env.PAYMOB_HMAC_SECRET?.trim();
 
+/** Production Render URL — default Paymob `notification_url` unless `PAYMOB_NOTIFICATION_URL` is set. */
+const DEFAULT_PUBLIC_API_ORIGIN = "https://unlimitedegypt.onrender.com";
+const DEFAULT_PAYMOB_WEBHOOK = `${DEFAULT_PUBLIC_API_ORIGIN.replace(/\/$/, "")}/paymob/webhook`;
+
 const SESSION_AMOUNTS_ENV = [
   ["quick-clarity", "PAYMOB_QUICK_CLARITY_CENTS"],
   ["business-advisory", "PAYMOB_BUSINESS_ADVISORY_CENTS"],
@@ -160,7 +164,8 @@ app.post("/paymob/intention", async (req, res) => {
   }
 
   const currency = (process.env.PAYMOB_CURRENCY || "EGP").toUpperCase();
-  const notify = process.env.PAYMOB_NOTIFICATION_URL?.trim();
+  const notify =
+    process.env.PAYMOB_NOTIFICATION_URL?.trim() || DEFAULT_PAYMOB_WEBHOOK;
   const redirect =
     process.env.PAYMOB_REDIRECT_URL?.trim() ||
     `${String(corsOrigin).replace(/\/$/, "")}/payment/return`;
