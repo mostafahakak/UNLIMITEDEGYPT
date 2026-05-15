@@ -49,14 +49,58 @@ function splitCustomerName(fullName, billing) {
 
 const app = express();
 
-const corsOrigin =
-  process.env.PAYMOB_CORS_ORIGIN ||
-  process.env.NEXT_PUBLIC_SITE_URL ||
+/** Comma-separated origins, or PAYMOB_CORS_ORIGIN alone. Adds apex ↔ `www` aliases so `koriemconsulting.com` matches `www.` and vice versa. */
+function collectCorsOrigins() {
+  const list = process.env.PAYMOB_CORS_ORIGINS?.trim();
+  if (list)
+    return list
+      .split(",")
+      .map((s) => s.trim().replace(/\/$/, ""))
+      .filter(Boolean);
+
+  const single =
+    process.env.PAYMOB_CORS_ORIGIN?.trim()?.replace(/\/$/, "") ||
+    process.env.NEXT_PUBLIC_SITE_URL?.trim()?.replace(/\/$/, "");
+  if (single) return [single];
+
+  return ["http://localhost:3000"];
+}
+
+function apexWwwAliases(origins) {
+  const set = new Set(origins);
+  for (const o of [...set]) {
+    try {
+      const u = new URL(o);
+      if (u.hostname === "localhost") continue;
+      const h = u.hostname;
+      const sibling = h.startsWith("www.") ? h.slice(4) : `www.${h}`;
+      const siblingUrl = `${u.protocol}//${sibling}${u.port ? `:${u.port}` : ""}`;
+      set.add(siblingUrl);
+    } catch {
+      /* ignore */
+    }
+  }
+  return set;
+}
+
+const corsPrimaryOrigins = collectCorsOrigins();
+const allowedCorsOrigins = apexWwwAliases(corsPrimaryOrigins);
+
+/** Used for Paymob `redirection_url` when PAYMOB_REDIRECT_URL unset — prefer apex you ship in env. */
+const siteOriginForRedirect =
+  process.env.PAYMOB_SITE_ORIGIN?.trim()?.replace(/\/$/, "") ||
+  corsPrimaryOrigins[0] ||
   "http://localhost:3000";
 
 app.use(
   cors({
-    origin: corsOrigin === "*" ? true : corsOrigin,
+    origin(origin, callback) {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+      callback(null, allowedCorsOrigins.has(origin));
+    },
     methods: ["GET", "POST", "OPTIONS"],
   })
 );
@@ -168,7 +212,7 @@ app.post("/paymob/intention", async (req, res) => {
     process.env.PAYMOB_NOTIFICATION_URL?.trim() || DEFAULT_PAYMOB_WEBHOOK;
   const redirect =
     process.env.PAYMOB_REDIRECT_URL?.trim() ||
-    `${String(corsOrigin).replace(/\/$/, "")}/payment/return`;
+    `${siteOriginForRedirect.replace(/\/$/, "")}/payment/return`;
 
   const reference = `${sessionId}:${cryptoRandomId()}`;
   const { first_name, last_name } = splitCustomerName(customer.name, billing_data);
